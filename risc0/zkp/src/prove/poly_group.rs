@@ -50,9 +50,9 @@ use crate::{
 /// about the original datapoints (i.e. is zero knowledge) so long as the number
 /// of queries is less than the randomized padding.
 pub struct PolyGroup<'a, H: Hal> {
-    pub coeffs: &'a H::BufferElem,
+    pub coeffs: &'a H::Buffer<H::Elem>,
     pub count: usize,
-    pub evaluated: H::BufferElem,
+    pub evaluated: H::Buffer<H::Elem>,
     pub merkle: MerkleTreeProver<H>,
 }
 
@@ -60,7 +60,7 @@ impl<'a, H: Hal> PolyGroup<'a, H> {
     #[tracing::instrument(name = "PolyGroup", skip_all, fields(name = _name))]
     pub fn new(
         hal: &H,
-        coeffs: &'a H::BufferElem,
+        coeffs: &'a H::Buffer<H::Elem>,
         count: usize,
         size: usize,
         _name: &'static str,

@@ -13,6 +13,9 @@
 // limitations under the License.
 
 use core::marker::PhantomData;
+use std::fmt::Debug;
+
+use bytemuck::Pod;
 
 use super::{Buffer, EvalCheck, Hal};
 use crate::core::sha::Digest;
@@ -26,7 +29,7 @@ pub struct BufferImpl<T, U: Buffer<T>, V: Buffer<T>> {
 
 impl<T, U: Buffer<T>, V: Buffer<T>> BufferImpl<T, U, V>
 where
-    T: std::fmt::Debug + PartialEq,
+    T: Debug + PartialEq,
 {
     pub fn new(buf1: U, buf2: V) -> Self {
         Self {
@@ -48,7 +51,7 @@ where
 
 impl<T: Clone, U: Buffer<T>, V: Buffer<T>> Buffer<T> for BufferImpl<T, U, V>
 where
-    T: std::fmt::Debug + PartialEq,
+    T: Debug + PartialEq,
 {
     fn size(&self) -> usize {
         let lhs = self.buf1.size();
@@ -88,29 +91,32 @@ impl<'a, U: Hal, V: Hal> DualHal<'a, U, V> {
 
 impl<'a, U: Hal, V: Hal> Hal for DualHal<'a, U, V>
 where
-    U::BufferElem: Buffer<U::Elem>,
-    U::BufferElem: Buffer<V::Elem>,
+    // U::Buffer<U::Elem>: Buffer<U::Elem>,
+    // U::Buffer<U::Elem>: Buffer<V::Elem>,
+    // U::Buffer<V::Elem>: Buffer<U::Elem>,
+    // U::Buffer<V::Elem>: Buffer<V::Elem>,
     U::BufferExtElem: Buffer<U::ExtElem>,
     U::BufferExtElem: Buffer<V::ExtElem>,
-    V::BufferElem: Buffer<U::Elem>,
-    V::BufferElem: Buffer<V::Elem>,
+    // V::Buffer<U::Elem>: Buffer<U::Elem>,
+    // V::Buffer<U::Elem>: Buffer<V::Elem>,
+    // V::Buffer<V::Elem>: Buffer<U::Elem>,
+    // V::Buffer<V::Elem>: Buffer<V::Elem>,
     V::BufferExtElem: Buffer<U::ExtElem>,
     V::BufferExtElem: Buffer<V::ExtElem>,
 {
     type Elem = U::Elem;
     type ExtElem = U::ExtElem;
-    type BufferDigest = BufferImpl<Digest, U::BufferDigest, V::BufferDigest>;
-    type BufferElem = BufferImpl<Self::Elem, U::BufferElem, V::BufferElem>;
+    type Buffer<T: Pod + Debug + PartialEq> = BufferImpl<T, U::Buffer<T>, V::Buffer<T>>;
     type BufferExtElem = BufferImpl<Self::ExtElem, U::BufferExtElem, V::BufferExtElem>;
     type BufferU32 = BufferImpl<u32, U::BufferU32, V::BufferU32>;
 
-    fn alloc_digest(&self, name: &'static str, size: usize) -> Self::BufferDigest {
+    fn alloc_digest(&self, name: &'static str, size: usize) -> Self::Buffer<Digest> {
         let buf1 = self.hal1.alloc_digest(name, size);
         let buf2 = self.hal2.alloc_digest(name, size);
         BufferImpl::new(buf1, buf2)
     }
 
-    fn alloc_elem(&self, name: &'static str, size: usize) -> Self::BufferElem {
+    fn alloc_elem(&self, name: &'static str, size: usize) -> Self::Buffer<Self::Elem> {
         let buf1 = self.hal1.alloc_elem(name, size);
         let buf2 = self.hal2.alloc_elem(name, size);
         BufferImpl::new(buf1, buf2)
@@ -132,13 +138,13 @@ where
         &self,
         name: &'static str,
         slice: &[crate::core::sha::Digest],
-    ) -> Self::BufferDigest {
+    ) -> Self::Buffer<Digest> {
         let buf1 = self.hal1.copy_from_digest(name, slice);
         let buf2 = self.hal2.copy_from_digest(name, slice);
         BufferImpl::new(buf1, buf2)
     }
 
-    fn copy_from_elem(&self, name: &'static str, slice: &[Self::Elem]) -> Self::BufferElem {
+    fn copy_from_elem(&self, name: &'static str, slice: &[Self::Elem]) -> Self::Buffer<Self::Elem> {
         let buf1 = self.hal1.copy_from_elem(name, slice);
         let buf2 = self.hal2.copy_from_elem(name, bytemuck::cast_slice(slice));
         BufferImpl::new(buf1, buf2)
@@ -162,25 +168,30 @@ where
         BufferImpl::new(buf1, buf2)
     }
 
-    fn batch_expand(&self, output: &Self::BufferElem, input: &Self::BufferElem, count: usize) {
+    fn batch_expand(
+        &self,
+        output: &Self::Buffer<Self::Elem>,
+        input: &Self::Buffer<Self::Elem>,
+        count: usize,
+    ) {
         self.hal1.batch_expand(&output.buf1, &input.buf1, count);
         self.hal2.batch_expand(&output.buf2, &input.buf2, count);
         output.assert_eq();
     }
 
-    fn batch_evaluate_ntt(&self, io: &Self::BufferElem, count: usize, expand_bits: usize) {
+    fn batch_evaluate_ntt(&self, io: &Self::Buffer<Self::Elem>, count: usize, expand_bits: usize) {
         self.hal1.batch_evaluate_ntt(&io.buf1, count, expand_bits);
         self.hal2.batch_evaluate_ntt(&io.buf2, count, expand_bits);
         io.assert_eq();
     }
 
-    fn batch_interpolate_ntt(&self, io: &Self::BufferElem, count: usize) {
+    fn batch_interpolate_ntt(&self, io: &Self::Buffer<Self::Elem>, count: usize) {
         self.hal1.batch_interpolate_ntt(&io.buf1, count);
         self.hal2.batch_interpolate_ntt(&io.buf2, count);
         io.assert_eq();
     }
 
-    fn batch_bit_reverse(&self, io: &Self::BufferElem, count: usize) {
+    fn batch_bit_reverse(&self, io: &Self::Buffer<Self::Elem>, count: usize) {
         self.hal1.batch_bit_reverse(&io.buf1, count);
         self.hal2.batch_bit_reverse(&io.buf2, count);
         io.assert_eq();
@@ -188,7 +199,7 @@ where
 
     fn batch_evaluate_any(
         &self,
-        coeffs: &Self::BufferElem,
+        coeffs: &Self::Buffer<Self::Elem>,
         poly_count: usize,
         which: &Self::BufferU32,
         xs: &Self::BufferExtElem,
@@ -215,7 +226,7 @@ where
         out.assert_eq();
     }
 
-    fn zk_shift(&self, io: &Self::BufferElem, count: usize) {
+    fn zk_shift(&self, io: &Self::Buffer<Self::Elem>, count: usize) {
         self.hal1.zk_shift(&io.buf1, count);
         self.hal2.zk_shift(&io.buf2, count);
         io.assert_eq();
@@ -226,7 +237,7 @@ where
         out: &Self::BufferExtElem,
         mix_start: &Self::ExtElem,
         mix: &Self::ExtElem,
-        input: &Self::BufferElem,
+        input: &Self::Buffer<Self::Elem>,
         combos: &Self::BufferU32,
         input_size: usize,
         count: usize,
@@ -254,9 +265,9 @@ where
 
     fn eltwise_add_elem(
         &self,
-        output: &Self::BufferElem,
-        input1: &Self::BufferElem,
-        input2: &Self::BufferElem,
+        output: &Self::Buffer<Self::Elem>,
+        input1: &Self::Buffer<Self::Elem>,
+        input2: &Self::Buffer<Self::Elem>,
     ) {
         self.hal1
             .eltwise_add_elem(&output.buf1, &input1.buf1, &input2.buf1);
@@ -265,32 +276,41 @@ where
         output.assert_eq();
     }
 
-    fn eltwise_sum_extelem(&self, output: &Self::BufferElem, input: &Self::BufferExtElem) {
+    fn eltwise_sum_extelem(&self, output: &Self::Buffer<Self::Elem>, input: &Self::BufferExtElem) {
         self.hal1.eltwise_sum_extelem(&output.buf1, &input.buf1);
         self.hal2.eltwise_sum_extelem(&output.buf2, &input.buf2);
         output.assert_eq();
     }
 
-    fn eltwise_copy_elem(&self, output: &Self::BufferElem, input: &Self::BufferElem) {
+    fn eltwise_copy_elem(
+        &self,
+        output: &Self::Buffer<Self::Elem>,
+        input: &Self::Buffer<Self::Elem>,
+    ) {
         self.hal1.eltwise_copy_elem(&output.buf1, &input.buf1);
         self.hal2.eltwise_copy_elem(&output.buf2, &input.buf2);
         output.assert_eq();
     }
 
-    fn fri_fold(&self, output: &Self::BufferElem, input: &Self::BufferElem, mix: &Self::ExtElem) {
+    fn fri_fold(
+        &self,
+        output: &Self::Buffer<Self::Elem>,
+        input: &Self::Buffer<Self::Elem>,
+        mix: &Self::ExtElem,
+    ) {
         self.hal1.fri_fold(&output.buf1, &input.buf1, mix);
         self.hal2
             .fri_fold(&output.buf2, &input.buf2, bytemuck::cast_ref(mix));
         output.assert_eq();
     }
 
-    fn sha_rows(&self, output: &Self::BufferDigest, matrix: &Self::BufferElem) {
+    fn sha_rows(&self, output: &Self::Buffer<Digest>, matrix: &Self::Buffer<Self::Elem>) {
         self.hal1.sha_rows(&output.buf1, &matrix.buf1);
         self.hal2.sha_rows(&output.buf2, &matrix.buf2);
         output.assert_eq();
     }
 
-    fn sha_fold(&self, io: &Self::BufferDigest, input_size: usize, output_size: usize) {
+    fn sha_fold(&self, io: &Self::Buffer<Digest>, input_size: usize, output_size: usize) {
         self.hal1.sha_fold(&io.buf1, input_size, output_size);
         self.hal2.sha_fold(&io.buf2, input_size, output_size);
         io.assert_eq();
@@ -302,6 +322,7 @@ pub struct DualEvalCheck<'a, H1: Hal, H2: Hal, E1: EvalCheck<H1>, E2: EvalCheck<
     eval2: &'a E2,
     phantom: PhantomData<(H1, H2)>,
 }
+
 impl<'a, H1, H2, E1, E2> DualEvalCheck<'a, H1, H2, E1, E2>
 where
     H1: Hal,
@@ -324,19 +345,25 @@ where
     E1: EvalCheck<H1>,
     H2: Hal,
     E2: EvalCheck<H2>,
-    H1::BufferElem: Buffer<H2::Elem>,
+    H1::Buffer<H1::Elem>: Buffer<H1::Elem>,
+    H1::Buffer<H1::Elem>: Buffer<H2::Elem>,
+    H1::Buffer<H2::Elem>: Buffer<H1::Elem>,
+    H1::Buffer<H2::Elem>: Buffer<H2::Elem>,
     H1::BufferExtElem: Buffer<H2::ExtElem>,
-    H2::BufferElem: Buffer<H1::Elem>,
+    H2::Buffer<H1::Elem>: Buffer<H1::Elem>,
+    H2::Buffer<H1::Elem>: Buffer<H2::Elem>,
+    H2::Buffer<H2::Elem>: Buffer<H1::Elem>,
+    H2::Buffer<H2::Elem>: Buffer<H2::Elem>,
     H2::BufferExtElem: Buffer<H1::ExtElem>,
 {
     fn eval_check(
         &self,
-        check: &<DualHal<H1, H2> as Hal>::BufferElem,
-        code: &<DualHal<H1, H2> as Hal>::BufferElem,
-        data: &<DualHal<H1, H2> as Hal>::BufferElem,
-        accum: &<DualHal<H1, H2> as Hal>::BufferElem,
-        mix: &<DualHal<H1, H2> as Hal>::BufferElem,
-        out: &<DualHal<H1, H2> as Hal>::BufferElem,
+        check: &<DualHal<H1, H2> as Hal>::Buffer<<DualHal<H1, H2> as Hal>::Elem>,
+        code: &<DualHal<H1, H2> as Hal>::Buffer<<DualHal<H1, H2> as Hal>::Elem>,
+        data: &<DualHal<H1, H2> as Hal>::Buffer<<DualHal<H1, H2> as Hal>::Elem>,
+        accum: &<DualHal<H1, H2> as Hal>::Buffer<<DualHal<H1, H2> as Hal>::Elem>,
+        mix: &<DualHal<H1, H2> as Hal>::Buffer<<DualHal<H1, H2> as Hal>::Elem>,
+        out: &<DualHal<H1, H2> as Hal>::Buffer<<DualHal<H1, H2> as Hal>::Elem>,
         poly_mix: <DualHal<H1, H2> as Hal>::ExtElem,
         po2: usize,
         steps: usize,

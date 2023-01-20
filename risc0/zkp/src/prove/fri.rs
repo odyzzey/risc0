@@ -27,7 +27,7 @@ use crate::{
 
 struct ProveRoundInfo<H: Hal> {
     domain: usize,
-    coeffs: H::BufferElem,
+    coeffs: H::Buffer<H::Elem>,
     merkle: MerkleTreeProver<H>,
 }
 
@@ -37,7 +37,7 @@ impl<H: Hal> ProveRoundInfo<H> {
     /// produce the evaluations of the polynomial, the merkle tree
     /// committing to the evaluation, and the coefficients of the folded
     /// polynomial.
-    pub fn new<S: Sha>(hal: &H, iop: &mut WriteIOP<S>, coeffs: &H::BufferElem) -> Self {
+    pub fn new<S: Sha>(hal: &H, iop: &mut WriteIOP<S>, coeffs: &H::Buffer<H::Elem>) -> Self {
         debug!("Doing FRI folding");
         let ext_size = H::ExtElem::EXT_SIZE;
         // Get the number of coefficients of the polynomial over the extension field.
@@ -89,7 +89,7 @@ impl<H: Hal> ProveRoundInfo<H> {
 pub fn fri_prove<H: Hal, S: Sha, F>(
     hal: &H,
     iop: &mut WriteIOP<S>,
-    coeffs: &H::BufferElem,
+    coeffs: &H::Buffer<H::Elem>,
     mut f: F,
 ) where
     F: FnMut(&mut WriteIOP<S>, usize),

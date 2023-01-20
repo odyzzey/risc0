@@ -12,8 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{collections::HashMap, ffi::c_void, marker::PhantomData, mem, slice};
+use std::{collections::HashMap, ffi::c_void, fmt::Debug, marker::PhantomData, mem, slice};
 
+use bytemuck::Pod;
 use metal::{
     Buffer as MetalBuffer, CommandQueue, ComputePipelineDescriptor, Device, MTLResourceOptions,
     MTLSize, NSRange,
@@ -243,16 +244,19 @@ impl Hal for MetalHal {
     type Elem = BabyBearElem;
     type ExtElem = BabyBearExtElem;
 
-    type BufferDigest = BufferImpl<Digest>;
-    type BufferElem = BufferImpl<Self::Elem>;
+    type Buffer<T: Pod + Debug + PartialEq> = BufferImpl<T>;
     type BufferExtElem = BufferImpl<Self::ExtElem>;
     type BufferU32 = BufferImpl<u32>;
 
-    fn alloc_elem(&self, _name: &'static str, size: usize) -> Self::BufferElem {
+    fn alloc_elem(&self, _name: &'static str, size: usize) -> Self::Buffer<Self::Elem> {
         BufferImpl::new(&self.device, self.cmd_queue.clone(), size)
     }
 
-    fn copy_from_elem(&self, _name: &'static str, slice: &[Self::Elem]) -> Self::BufferElem {
+    fn copy_from_elem(
+        &self,
+        _name: &'static str,
+        slice: &[Self::Elem],
+    ) -> Self::Buffer<Self::Elem> {
         BufferImpl::copy_from(&self.device, self.cmd_queue.clone(), slice)
     }
 
@@ -268,11 +272,11 @@ impl Hal for MetalHal {
         BufferImpl::copy_from(&self.device, self.cmd_queue.clone(), slice)
     }
 
-    fn alloc_digest(&self, _name: &'static str, size: usize) -> Self::BufferDigest {
+    fn alloc_digest(&self, _name: &'static str, size: usize) -> Self::Buffer<Digest> {
         BufferImpl::new(&self.device, self.cmd_queue.clone(), size)
     }
 
-    fn copy_from_digest(&self, _name: &'static str, slice: &[Digest]) -> Self::BufferDigest {
+    fn copy_from_digest(&self, _name: &'static str, slice: &[Digest]) -> Self::Buffer<Digest> {
         BufferImpl::copy_from(&self.device, self.cmd_queue.clone(), slice)
     }
 
@@ -285,7 +289,7 @@ impl Hal for MetalHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn batch_bit_reverse(&self, io: &Self::BufferElem, count: usize) {
+    fn batch_bit_reverse(&self, io: &Self::Buffer<Self::Elem>, count: usize) {
         let row_size = io.size() / count;
         assert_eq!(row_size * count, io.size());
         let bits = log2_ceil(row_size);
@@ -299,7 +303,12 @@ impl Hal for MetalHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn batch_expand(&self, output: &Self::BufferElem, input: &Self::BufferElem, poly_count: usize) {
+    fn batch_expand(
+        &self,
+        output: &Self::Buffer<Self::Elem>,
+        input: &Self::Buffer<Self::Elem>,
+        poly_count: usize,
+    ) {
         log::debug!(
             "output: {}, input: {}, poly_count: {poly_count}",
             output.size(),
@@ -323,7 +332,7 @@ impl Hal for MetalHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn batch_evaluate_ntt(&self, io: &Self::BufferElem, count: usize, expand_bits: usize) {
+    fn batch_evaluate_ntt(&self, io: &Self::Buffer<Self::Elem>, count: usize, expand_bits: usize) {
         log::debug!(
             "io: {}, count: {count}, expand_bits: {expand_bits}",
             io.size()
@@ -350,7 +359,7 @@ impl Hal for MetalHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn batch_interpolate_ntt(&self, io: &Self::BufferElem, count: usize) {
+    fn batch_interpolate_ntt(&self, io: &Self::Buffer<Self::Elem>, count: usize) {
         log::debug!("io: {}, count: {count}", io.size());
         let row_size = io.size() / count;
         assert_eq!(row_size * count, io.size());
@@ -380,7 +389,7 @@ impl Hal for MetalHal {
     #[tracing::instrument(skip_all)]
     fn batch_evaluate_any(
         &self,
-        coeffs: &Self::BufferElem,
+        coeffs: &Self::Buffer<Self::Elem>,
         poly_count: usize,
         which: &Self::BufferU32,
         xs: &Self::BufferExtElem,
@@ -407,9 +416,9 @@ impl Hal for MetalHal {
     #[tracing::instrument(skip_all)]
     fn eltwise_add_elem(
         &self,
-        output: &Self::BufferElem,
-        input1: &Self::BufferElem,
-        input2: &Self::BufferElem,
+        output: &Self::Buffer<Self::Elem>,
+        input1: &Self::Buffer<Self::Elem>,
+        input2: &Self::Buffer<Self::Elem>,
     ) {
         assert_eq!(output.size(), input1.size());
         assert_eq!(output.size(), input2.size());
@@ -419,7 +428,7 @@ impl Hal for MetalHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn eltwise_sum_extelem(&self, output: &Self::BufferElem, input: &Self::BufferExtElem) {
+    fn eltwise_sum_extelem(&self, output: &Self::Buffer<Self::Elem>, input: &Self::BufferExtElem) {
         let count = output.size() / Self::ExtElem::EXT_SIZE;
         let to_add = input.size() / count;
         assert_eq!(output.size(), count * Self::ExtElem::EXT_SIZE);
@@ -434,7 +443,11 @@ impl Hal for MetalHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn eltwise_copy_elem(&self, output: &Self::BufferElem, input: &Self::BufferElem) {
+    fn eltwise_copy_elem(
+        &self,
+        output: &Self::Buffer<Self::Elem>,
+        input: &Self::Buffer<Self::Elem>,
+    ) {
         assert_eq!(output.size(), input.size());
         let count = output.size() as u64;
         let args = &[output.as_arg(), input.as_arg()];
@@ -442,7 +455,12 @@ impl Hal for MetalHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn fri_fold(&self, output: &Self::BufferElem, input: &Self::BufferElem, mix: &Self::ExtElem) {
+    fn fri_fold(
+        &self,
+        output: &Self::Buffer<Self::Elem>,
+        input: &Self::Buffer<Self::Elem>,
+        mix: &Self::ExtElem,
+    ) {
         let count = output.size() / Self::ExtElem::EXT_SIZE;
         assert_eq!(output.size(), count * Self::ExtElem::EXT_SIZE);
         assert_eq!(input.size(), output.size() * FRI_FOLD);
@@ -462,7 +480,7 @@ impl Hal for MetalHal {
         output: &Self::BufferExtElem,
         mix_start: &Self::ExtElem,
         mix: &Self::ExtElem,
-        input: &Self::BufferElem,
+        input: &Self::Buffer<Self::Elem>,
         combos: &Self::BufferU32,
         input_size: usize,
         count: usize,
@@ -488,7 +506,7 @@ impl Hal for MetalHal {
         self.dispatch_by_name("mix_poly_coeffs", args, count as u64);
     }
 
-    fn sha_fold(&self, io: &Self::BufferDigest, input_size: usize, output_size: usize) {
+    fn sha_fold(&self, io: &Self::Buffer<Digest>, input_size: usize, output_size: usize) {
         assert_eq!(input_size, 2 * output_size);
         let args = &[
             io.as_arg_with_offset(output_size),
@@ -498,7 +516,7 @@ impl Hal for MetalHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn sha_rows(&self, output: &Self::BufferDigest, matrix: &Self::BufferElem) {
+    fn sha_rows(&self, output: &Self::Buffer<Digest>, matrix: &Self::Buffer<Self::Elem>) {
         let row_size = output.size();
         let col_size = matrix.size() / output.size();
         assert_eq!(matrix.size(), col_size * row_size);
@@ -512,7 +530,7 @@ impl Hal for MetalHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn zk_shift(&self, io: &Self::BufferElem, poly_count: usize) {
+    fn zk_shift(&self, io: &Self::Buffer<Self::Elem>, poly_count: usize) {
         let bits = log2_ceil(io.size() / poly_count);
         let count = io.size();
         assert_eq!(io.size(), poly_count * (1 << bits));

@@ -201,7 +201,7 @@ impl Hal for CudaHal {
     type Elem = BabyBearElem;
     type ExtElem = BabyBearExtElem;
 
-    type BufferDigest = BufferImpl<Digest>;
+    type Buffer<T> = BufferImpl<T>;
     type BufferElem = BufferImpl<Self::Elem>;
     type BufferExtElem = BufferImpl<Self::ExtElem>;
     type BufferU32 = BufferImpl<u32>;
@@ -226,11 +226,11 @@ impl Hal for CudaHal {
         BufferImpl::copy_from(name, slice)
     }
 
-    fn alloc_digest(&self, name: &'static str, size: usize) -> Self::BufferDigest {
+    fn alloc_digest(&self, name: &'static str, size: usize) -> Self::Buffer<Digest> {
         BufferImpl::new(name, size)
     }
 
-    fn copy_from_digest(&self, name: &'static str, slice: &[Digest]) -> Self::BufferDigest {
+    fn copy_from_digest(&self, name: &'static str, slice: &[Digest]) -> Self::Buffer<Digest> {
         BufferImpl::copy_from(name, slice)
     }
 
@@ -546,7 +546,7 @@ impl Hal for CudaHal {
     }
 
     #[tracing::instrument(skip_all)]
-    fn sha_rows(&self, output: &Self::BufferDigest, matrix: &Self::BufferElem) {
+    fn sha_rows(&self, output: &Self::Buffer<Digest>, matrix: &Self::BufferElem) {
         let row_size = output.size();
         let col_size = matrix.size() / output.size();
         assert_eq!(matrix.size(), col_size * row_size);
@@ -567,7 +567,7 @@ impl Hal for CudaHal {
         stream.synchronize().unwrap();
     }
 
-    fn sha_fold(&self, io: &Self::BufferDigest, input_size: usize, output_size: usize) {
+    fn sha_fold(&self, io: &Self::Buffer<Digest>, input_size: usize, output_size: usize) {
         assert_eq!(input_size, 2 * output_size);
 
         let stream = Stream::new(StreamFlags::DEFAULT, None).unwrap();

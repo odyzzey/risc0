@@ -21,6 +21,10 @@ pub mod dual;
 #[cfg(target_os = "macos")]
 pub mod metal;
 
+use std::fmt::Debug;
+
+use bytemuck::Pod;
+
 use crate::{
     core::sha::Digest,
     field::{Elem, ExtElem, RootsOfUnity},
@@ -40,49 +44,55 @@ pub trait Buffer<T>: Clone {
 pub trait Hal {
     type Elem: Elem + RootsOfUnity;
     type ExtElem: ExtElem<SubElem = Self::Elem>;
-    type BufferDigest: Buffer<Digest>;
-    type BufferElem: Buffer<Self::Elem>;
+    type Buffer<T>: Buffer<T>
+    where
+        T: Pod + Debug + PartialEq;
     type BufferExtElem: Buffer<Self::ExtElem>;
     type BufferU32: Buffer<u32>;
 
     const CHECK_SIZE: usize = INV_RATE * Self::ExtElem::EXT_SIZE;
 
-    fn alloc_digest(&self, name: &'static str, size: usize) -> Self::BufferDigest;
-    fn alloc_elem(&self, name: &'static str, size: usize) -> Self::BufferElem;
+    fn alloc_digest(&self, name: &'static str, size: usize) -> Self::Buffer<Digest>;
+    fn alloc_elem(&self, name: &'static str, size: usize) -> Self::Buffer<Self::Elem>;
     fn alloc_extelem(&self, name: &'static str, size: usize) -> Self::BufferExtElem;
     fn alloc_u32(&self, name: &'static str, size: usize) -> Self::BufferU32;
 
-    fn copy_from_digest(&self, name: &'static str, slice: &[Digest]) -> Self::BufferDigest;
-    fn copy_from_elem(&self, name: &'static str, slice: &[Self::Elem]) -> Self::BufferElem;
+    fn copy_from_digest(&self, name: &'static str, slice: &[Digest]) -> Self::Buffer<Digest>;
+    fn copy_from_elem(&self, name: &'static str, slice: &[Self::Elem]) -> Self::Buffer<Self::Elem>;
     fn copy_from_extelem(&self, name: &'static str, slice: &[Self::ExtElem])
         -> Self::BufferExtElem;
     fn copy_from_u32(&self, name: &'static str, slice: &[u32]) -> Self::BufferU32;
 
-    fn batch_expand(&self, output: &Self::BufferElem, input: &Self::BufferElem, count: usize);
+    fn batch_expand(
+        &self,
+        output: &Self::Buffer<Self::Elem>,
+        input: &Self::Buffer<Self::Elem>,
+        count: usize,
+    );
 
-    fn batch_evaluate_ntt(&self, io: &Self::BufferElem, count: usize, expand_bits: usize);
+    fn batch_evaluate_ntt(&self, io: &Self::Buffer<Self::Elem>, count: usize, expand_bits: usize);
 
-    fn batch_interpolate_ntt(&self, io: &Self::BufferElem, count: usize);
+    fn batch_interpolate_ntt(&self, io: &Self::Buffer<Self::Elem>, count: usize);
 
-    fn batch_bit_reverse(&self, io: &Self::BufferElem, count: usize);
+    fn batch_bit_reverse(&self, io: &Self::Buffer<Self::Elem>, count: usize);
 
     fn batch_evaluate_any(
         &self,
-        coeffs: &Self::BufferElem,
+        coeffs: &Self::Buffer<Self::Elem>,
         poly_count: usize,
         which: &Self::BufferU32,
         xs: &Self::BufferExtElem,
         out: &Self::BufferExtElem,
     );
 
-    fn zk_shift(&self, io: &Self::BufferElem, count: usize);
+    fn zk_shift(&self, io: &Self::Buffer<Self::Elem>, count: usize);
 
     fn mix_poly_coeffs(
         &self,
         out: &Self::BufferExtElem,
         mix_start: &Self::ExtElem,
         mix: &Self::ExtElem,
-        input: &Self::BufferElem,
+        input: &Self::Buffer<Self::Elem>,
         combos: &Self::BufferU32,
         input_size: usize,
         count: usize,
@@ -90,32 +100,41 @@ pub trait Hal {
 
     fn eltwise_add_elem(
         &self,
-        output: &Self::BufferElem,
-        input1: &Self::BufferElem,
-        input2: &Self::BufferElem,
+        output: &Self::Buffer<Self::Elem>,
+        input1: &Self::Buffer<Self::Elem>,
+        input2: &Self::Buffer<Self::Elem>,
     );
 
-    fn eltwise_sum_extelem(&self, output: &Self::BufferElem, input: &Self::BufferExtElem);
+    fn eltwise_sum_extelem(&self, output: &Self::Buffer<Self::Elem>, input: &Self::BufferExtElem);
 
-    fn eltwise_copy_elem(&self, output: &Self::BufferElem, input: &Self::BufferElem);
+    fn eltwise_copy_elem(
+        &self,
+        output: &Self::Buffer<Self::Elem>,
+        input: &Self::Buffer<Self::Elem>,
+    );
 
-    fn fri_fold(&self, output: &Self::BufferElem, input: &Self::BufferElem, mix: &Self::ExtElem);
+    fn fri_fold(
+        &self,
+        output: &Self::Buffer<Self::Elem>,
+        input: &Self::Buffer<Self::Elem>,
+        mix: &Self::ExtElem,
+    );
 
-    fn sha_rows(&self, output: &Self::BufferDigest, matrix: &Self::BufferElem);
+    fn sha_rows(&self, output: &Self::Buffer<Digest>, matrix: &Self::Buffer<Self::Elem>);
 
-    fn sha_fold(&self, io: &Self::BufferDigest, input_size: usize, output_size: usize);
+    fn sha_fold(&self, io: &Self::Buffer<Digest>, input_size: usize, output_size: usize);
 }
 
 pub trait EvalCheck<H: Hal> {
     /// Compute check polynomial.
     fn eval_check(
         &self,
-        check: &H::BufferElem,
-        code: &H::BufferElem,
-        data: &H::BufferElem,
-        accum: &H::BufferElem,
-        mix: &H::BufferElem,
-        out: &H::BufferElem,
+        check: &H::Buffer<H::Elem>,
+        code: &H::Buffer<H::Elem>,
+        data: &H::Buffer<H::Elem>,
+        accum: &H::Buffer<H::Elem>,
+        mix: &H::Buffer<H::Elem>,
+        out: &H::Buffer<H::Elem>,
         poly_mix: H::ExtElem,
         po2: usize,
         steps: usize,

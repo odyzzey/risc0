@@ -345,7 +345,7 @@ where
     proof
 }
 
-fn make_coeffs<H: Hal>(hal: &H, input: &[H::Elem], count: usize) -> H::BufferElem {
+fn make_coeffs<H: Hal>(hal: &H, input: &[H::Elem], count: usize) -> H::Buffer<H::Elem> {
     // Copy into accel buffer
     let buf = hal.copy_from_elem("input", input);
     // Do interpolate
