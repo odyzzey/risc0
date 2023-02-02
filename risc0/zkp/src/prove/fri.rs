@@ -20,18 +20,19 @@ use risc0_core::field::{Elem, ExtElem};
 
 use crate::{
     core::{log2_ceil, sha::Sha},
-    hal::{Buffer, Hal},
+    hal::{Buffer, Hal, ProverHash},
     prove::{merkle::MerkleTreeProver, write_iop::WriteIOP},
     FRI_FOLD, FRI_MIN_DEGREE, INV_RATE, QUERIES,
 };
 
-struct ProveRoundInfo<H: Hal> {
+struct ProveRoundInfo<H, PH> where H: Hal, PH: ProverHash<H> {
+    //phantom: PhantomData<PH>,
     domain: usize,
     coeffs: H::BufferElem,
-    merkle: MerkleTreeProver<H>,
+    merkle: MerkleTreeProver<H, PH>,
 }
 
-impl<H: Hal> ProveRoundInfo<H> {
+impl<H, PH> ProveRoundInfo<H, PH> where H: Hal, PH: ProverHash<H> {
     /// Computes a round of the folding protocol. Takes in the coefficients of
     /// the current polynomial, and interacts with the IOP verifier to
     /// produce the evaluations of the polynomial, the merkle tree
@@ -86,12 +87,13 @@ impl<H: Hal> ProveRoundInfo<H> {
 }
 
 #[tracing::instrument(skip_all)]
-pub fn fri_prove<H: Hal, S: Sha, F>(
+pub fn fri_prove<H: Hal, PH, S: Sha, F>(
     hal: &H,
     iop: &mut WriteIOP<S>,
     coeffs: &H::BufferElem,
     mut f: F,
 ) where
+    PH: ProverHash<H>,
     F: FnMut(&mut WriteIOP<S>, usize),
 {
     let ext_size = H::ExtElem::EXT_SIZE;
@@ -99,7 +101,7 @@ pub fn fri_prove<H: Hal, S: Sha, F>(
     let mut rounds = Vec::new();
     let mut coeffs = coeffs.clone();
     while coeffs.size() / ext_size > FRI_MIN_DEGREE {
-        let round = ProveRoundInfo::new(hal, iop, &coeffs);
+        let round : ProveRoundInfo<H, PH> = ProveRoundInfo::new(hal, iop, &coeffs);
         coeffs = round.coeffs.clone();
         rounds.push(round);
     }

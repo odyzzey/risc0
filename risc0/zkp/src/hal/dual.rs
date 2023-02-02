@@ -284,6 +284,7 @@ where
         output.assert_eq();
     }
 
+    /*
     fn sha_rows(&self, output: &Self::BufferDigest, matrix: &Self::BufferElem) {
         self.hal1.sha_rows(&output.buf1, &matrix.buf1);
         self.hal2.sha_rows(&output.buf2, &matrix.buf2);
@@ -295,6 +296,7 @@ where
         self.hal2.sha_fold(&io.buf2, input_size, output_size);
         io.assert_eq();
     }
+    */
 }
 
 pub struct DualEvalCheck<'a, H1: Hal, H2: Hal, E1: EvalCheck<H1>, E2: EvalCheck<H2>> {

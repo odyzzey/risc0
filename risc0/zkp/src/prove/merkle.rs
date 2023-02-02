@@ -17,14 +17,17 @@ use alloc::vec::Vec;
 #[allow(unused_imports)]
 use log::debug;
 
+use core::marker::PhantomData;
+
 use crate::{
     core::sha::{Digest, Sha},
-    hal::{Buffer, Hal},
+    hal::{Buffer, Hal, ProverHash},
     merkle::MerkleTreeParams,
     prove::write_iop::WriteIOP,
 };
 
-pub struct MerkleTreeProver<H: Hal> {
+pub struct MerkleTreeProver<H, PH> where H: Hal, PH : ProverHash<H> {
+    phantom: PhantomData<PH>,
     params: MerkleTreeParams,
     // The retained matrix of values
     matrix: H::BufferElem,
@@ -36,7 +39,7 @@ pub struct MerkleTreeProver<H: Hal> {
     root: Digest,
 }
 
-impl<H: Hal> MerkleTreeProver<H> {
+impl<H, PH> MerkleTreeProver<H, PH> where H: Hal, PH : ProverHash<H> {
     /// Generate a merkle tree from a matrix of values.
     ///
     /// The proofs will prove a single 'column' of values in the tree at a
@@ -56,12 +59,12 @@ impl<H: Hal> MerkleTreeProver<H> {
         // Allocate nodes
         let nodes = hal.alloc_digest("nodes", rows * 2);
         // Sha each column
-        hal.sha_rows(&nodes.slice(rows, rows), matrix);
+        PH::hash_rows(hal, &nodes.slice(rows, rows), matrix);
         // For each layer, sha up the layer below
-        tracing::info_span!("sha_fold").in_scope(|| {
+        tracing::info_span!("hash_fold").in_scope(|| {
             for i in (0..params.layers).rev() {
                 let layer_size = 1 << i;
-                hal.sha_fold(&nodes, layer_size * 2, layer_size);
+                PH::hash_fold(hal, &nodes.slice(layer_size, layer_size), &nodes.slice(layer_size * 2, layer_size * 2));
             }
         });
         let mut nodes_host = Vec::with_capacity(nodes.size());
@@ -70,6 +73,7 @@ impl<H: Hal> MerkleTreeProver<H> {
         });
         let root = nodes_host[1];
         MerkleTreeProver {
+            phantom: PhantomData,
             params,
             matrix: matrix.clone(),
             nodes: nodes_host,

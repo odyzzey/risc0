@@ -20,23 +20,24 @@ use crate::{
         poly::{poly_divide, poly_interpolate},
         sha::Sha,
     },
-    hal::{Buffer, EvalCheck, Hal},
+    hal::{Buffer, EvalCheck, Hal, ProverHash},
     prove::{fri::fri_prove, poly_group::PolyGroup, write_iop::WriteIOP},
     taps::TapSet,
     INV_RATE,
 };
 
 /// Object to generate a zero-knowledge proof of the execution of some circuit.
-pub struct Prover<'a, H, S>
+pub struct Prover<'a, H, PH, S>
 where
     H: Hal,
+    PH: ProverHash<H>,
     S: Sha,
 {
     hal: &'a H,
     sha: &'a S,
     taps: &'a TapSet<'a>,
     iop: WriteIOP<S>,
-    groups: Vec<Option<PolyGroup<H>>>,
+    groups: Vec<Option<PolyGroup<H, PH>>>,
     cycles: usize,
     po2: usize,
 }
@@ -50,9 +51,10 @@ fn make_coeffs<H: Hal>(hal: &H, buf: H::BufferElem, count: usize) -> H::BufferEl
     buf
 }
 
-impl<'a, H, S> Prover<'a, H, S>
+impl<'a, H, PH, S> Prover<'a, H, PH, S>
 where
     H: Hal,
+    PH: ProverHash<H>,
     S: Sha,
 {
     /// Creates a new prover.
@@ -175,7 +177,7 @@ where
         // invRate*size to 16 polys of size, without actually doing anything.
 
         // Make the PolyGroup + add it to the IOP;
-        let check_group = PolyGroup::new(self.hal, check_poly, H::CHECK_SIZE, self.cycles, "check");
+        let check_group : PolyGroup<H, PH> = PolyGroup::new(self.hal, check_poly, H::CHECK_SIZE, self.cycles, "check");
         check_group.merkle.commit(&mut self.iop);
         debug!("checkGroup: {}", check_group.merkle.root());
 
@@ -351,7 +353,7 @@ where
             final_poly_coeffs.size() / H::ExtElem::EXT_SIZE
         );
 
-        fri_prove(self.hal, &mut self.iop, &final_poly_coeffs, |iop, idx| {
+        fri_prove::<H, PH, S, _>(self.hal, &mut self.iop, &final_poly_coeffs, |iop, idx| {
             for pg in self.groups.iter() {
                 let pg = pg.as_ref().unwrap();
 

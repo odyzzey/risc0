@@ -30,7 +30,7 @@ use risc0_core::field::{
     Elem, ExtElem, RootsOfUnity,
 };
 
-use super::{Buffer, Hal};
+use super::{Buffer, Hal, ProverHash};
 use crate::{
     core::{
         log2_ceil,
@@ -422,8 +422,19 @@ where
         }
     }
 
+}
+
+pub struct CpuShaProverHash<E: Elem, EE: ExtElem> {
+        phantom: PhantomData<(E, EE)>,
+}
+
+impl<E, EE> ProverHash<CpuHal<E, EE>> for CpuShaProverHash<E, EE>
+where
+    E: Elem + RootsOfUnity,
+    EE: ExtElem<SubElem = E>,
+{
     #[tracing::instrument(skip_all)]
-    fn sha_rows(&self, output: &Self::BufferDigest, matrix: &Self::BufferElem) {
+    fn hash_rows(_hal : &CpuHal<E, EE>, output: &CpuBuffer<Digest>, matrix: &CpuBuffer<E>) {
         let row_size = output.size();
         let col_size = matrix.size() / output.size();
         assert_eq!(matrix.size(), col_size * row_size);
@@ -435,16 +446,14 @@ where
         });
     }
 
-    fn sha_fold(&self, io: &Self::BufferDigest, input_size: usize, output_size: usize) {
+    fn hash_fold(_hal : &CpuHal<E, EE>, output: &CpuBuffer<Digest>, input: &CpuBuffer<Digest>) {
+        let input_size = input.size();
+        let output_size = output.size();
         assert_eq!(input_size, 2 * output_size);
-        let mut io = io.as_slice_mut();
+        //let mut io = io.as_slice_mut();
         let sha = sha_cpu::Impl {};
-        let (output, input) = unsafe {
-            (
-                from_raw_parts_mut(io.as_mut_ptr().add(output_size), output_size),
-                from_raw_parts(io.as_ptr().add(input_size), input_size),
-            )
-        };
+        let mut output = output.as_slice_mut();
+        let input = input.as_slice().to_vec();  // TODO: avoid copy
         output
             .par_iter_mut()
             .zip(input.par_chunks_exact(2))

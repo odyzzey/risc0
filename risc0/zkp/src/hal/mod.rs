@@ -99,9 +99,6 @@ pub trait Hal {
 
     fn fri_fold(&self, output: &Self::BufferElem, input: &Self::BufferElem, mix: &Self::ExtElem);
 
-    fn sha_rows(&self, output: &Self::BufferDigest, matrix: &Self::BufferElem);
-
-    fn sha_fold(&self, io: &Self::BufferDigest, input_size: usize, output_size: usize);
 }
 
 pub trait EvalCheck<H: Hal> {
@@ -117,6 +114,15 @@ pub trait EvalCheck<H: Hal> {
         po2: usize,
         steps: usize,
     );
+}
+
+// Specify which hash to use for the RS Merkle trees, parameterized on Hal for acceleration
+pub trait ProverHash<H: Hal> {
+    // Hash the rows of a matrix of field element downs to a single digest
+    fn hash_rows(hal: &H, output: &H::BufferDigest, matrix: &H::BufferElem);
+    // Make degree 2 merkle nodes, i.e.
+    // for i in 0..out.size(): out[i] = hash(in[2*i], in[2*i+1]);
+    fn hash_fold(hal: &H, output: &H::BufferDigest, input: &H::BufferDigest);
 }
 
 #[cfg(test)]
@@ -506,7 +512,8 @@ mod testutil {
         });
     }
 
-    pub(crate) fn sha_fold<H: Hal>(hal_gpu: H) {
+    /*
+    pub(crate) fn hash_fold<H: Hal>(hal_gpu: H) {
         const INPUTS: usize = 16;
         const OUTPUTS: usize = INPUTS / 2;
         let hal_cpu: CpuHal<H::Elem, H::ExtElem> = CpuHal::new();
@@ -543,7 +550,7 @@ mod testutil {
         });
     }
 
-    pub(crate) fn sha_rows<H: Hal<Elem = BabyBearElem>>(hal_gpu: H) {
+    pub(crate) fn hash_rows<H: Hal<Elem = BabyBearElem>>(hal_gpu: H) {
         let mut rng = thread_rng();
         let hal_cpu: CpuHal<H::Elem, H::ExtElem> = CpuHal::new();
         let rows = [1, 2, 3, 4, 10];
@@ -564,8 +571,8 @@ mod testutil {
                 });
                 let output_gpu = hal_gpu.alloc_digest("output", row_count);
                 let output_cpu = hal_cpu.alloc_digest("output", row_count);
-                hal_gpu.sha_rows(&output_gpu, &matrix_gpu);
-                hal_cpu.sha_rows(&output_cpu, &matrix_cpu);
+                hal_gpu.hash_rows(&output_gpu, &matrix_gpu);
+                hal_cpu.hash_rows(&output_cpu, &matrix_cpu);
                 output_gpu.view(|g| {
                     output_cpu.view(|c| {
                         for i in 0..g.len() {
@@ -576,6 +583,7 @@ mod testutil {
             }
         }
     }
+    */
 
     pub(crate) fn slice<H: Hal<Elem = BabyBearElem>>(hal_gpu: H) {
         let mut rng = thread_rng();

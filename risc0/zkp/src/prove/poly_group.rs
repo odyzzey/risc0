@@ -14,7 +14,7 @@
 
 use crate::{
     core::log2_ceil,
-    hal::{Buffer, Hal},
+    hal::{Buffer, Hal, ProverHash},
     prove::merkle::MerkleTreeProver,
     INV_RATE, QUERIES,
 };
@@ -49,14 +49,14 @@ use crate::{
 /// which means that the normal NTT evaluation domain does not reveal anything
 /// about the original datapoints (i.e. is zero knowledge) so long as the number
 /// of queries is less than the randomized padding.
-pub struct PolyGroup<H: Hal> {
+pub struct PolyGroup<H, PH> where H: Hal, PH: ProverHash<H> {
     pub coeffs: H::BufferElem,
     pub count: usize,
     pub evaluated: H::BufferElem,
-    pub merkle: MerkleTreeProver<H>,
+    pub merkle: MerkleTreeProver<H, PH>,
 }
 
-impl<'a, H: Hal> PolyGroup<H> {
+impl<'a, H, PH> PolyGroup<H, PH> where H: Hal, PH: ProverHash<H> {
     #[tracing::instrument(name = "PolyGroup", skip_all, fields(name = _name))]
     pub fn new(
         hal: &H,
