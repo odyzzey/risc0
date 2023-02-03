@@ -35,7 +35,7 @@ use crate::{
     core::{
         log2_ceil,
         ntt::{bit_rev_32, bit_reverse, evaluate_ntt, expand, interpolate_ntt},
-        sha::{Digest, Sha},
+        sha::{Digest, Sha256},
         sha_cpu,
     },
     FRI_FOLD,
@@ -440,9 +440,8 @@ where
         assert_eq!(matrix.size(), col_size * row_size);
         let mut output = output.as_slice_mut();
         let matrix = matrix.as_slice().to_vec(); // TODO: avoid copy
-        let sha = sha_cpu::Impl {};
         output.par_iter_mut().enumerate().for_each(|(idx, output)| {
-            *output = *sha.hash_pod_stride(matrix.as_slice(), idx, col_size, row_size);
+            *output = *sha_cpu::Impl::hash_pod_stride(matrix.as_slice(), idx, col_size, row_size);
         });
     }
 
@@ -450,7 +449,6 @@ where
         let input_size = input.size();
         let output_size = output.size();
         assert_eq!(input_size, 2 * output_size);
-        //let mut io = io.as_slice_mut();
         let sha = sha_cpu::Impl {};
         let mut output = output.as_slice_mut();
         let input = input.as_slice().to_vec();  // TODO: avoid copy
@@ -458,13 +456,14 @@ where
             .par_iter_mut()
             .zip(input.par_chunks_exact(2))
             .for_each(|(output, input)| {
-                *output = *sha.hash_pair(&input[0], &input[1]);
+                *output = *sha_cpu::Impl::hash_pair(&input[0], &input[1]);
             });
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use hex::FromHex;
     use rand::thread_rng;
 
     use super::*;
@@ -529,7 +528,7 @@ mod tests {
         output.view(|view| {
             assert_eq!(expected.len(), view.len());
             for (expected, actual) in expected.iter().zip(view) {
-                assert_eq!(Digest::from_str(expected), *actual);
+                assert_eq!(Digest::from_hex(expected).unwrap(), *actual);
             }
         });
     }
