@@ -15,6 +15,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     mem::take,
+    sync::{Arc, RwLock}
 };
 
 use anyhow::Result;
@@ -280,6 +281,62 @@ impl PagedMemory {
             PageState::Dirty => Action::PageWrite(page_idx, page_cycles, old.is_some()),
         };
         self.pending_actions.push(action);
+    }
+}
+
+pub struct SharedPagedMemory {
+    inner: Arc<RwLock<PagedMemory>>,
+}
+
+impl SharedPagedMemory {
+    pub fn new(image: MemoryImage) -> Self {
+        Self {
+            inner: Arc::new(RwLock::new(PagedMemory::new(image))),
+        }
+    }
+
+    pub fn read(&self) -> std::sync::RwLockReadGuard<'_, PagedMemory> {
+        self.inner.read().unwrap()
+    }
+
+    pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, PagedMemory> {
+        self.inner.write().unwrap()
+    }
+
+    pub fn cycles(&self) -> usize {
+        self.read().cycles
+    }
+
+    pub fn peek(&self, addr: WordAddr) -> Result<u32> {
+        self.read().peek(addr)
+    }
+
+    pub fn load(&self, addr: WordAddr) -> u32 {
+        self.write().load(addr)
+    }
+
+    pub fn store(&self, addr: WordAddr, data: u32) -> Result<()> {
+        self.write().store(addr, data)
+    }
+
+    pub fn commit(&self, pc: ByteAddr) -> (SystemState, MemoryImage, SystemState) {
+        self.write().commit(pc)
+    }
+
+    pub fn undo(&self) {
+        self.write().undo()
+    }
+
+    pub fn commit_step(&self) {
+        self.write().commit_step()
+    }
+
+    pub fn clear(&self) {
+        self.write().clear()
+    }
+
+    pub fn peek_page(&self, page_idx: u32) -> Vec<u8> {
+        self.read().peek_page(page_idx)
     }
 }
 

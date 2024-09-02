@@ -42,7 +42,7 @@ use sha2::digest::generic_array::GenericArray;
 
 use super::{
     addr::{ByteAddr, WordAddr},
-    pager::PagedMemory,
+    pager::{PagedMemory, SharedPagedMemory},
     rv32im::{DecodedInstruction, EmuContext, Emulator, Instruction, TrapCause},
     BIGINT_CYCLES, SYSTEM_START,
 };
@@ -139,7 +139,7 @@ struct PendingState {
 pub struct Executor<'a, 'b, S: Syscall> {
     pc: ByteAddr,
     insn_cycles: usize,
-    pager: PagedMemory,
+    pager: SharedPagedMemory,
     exit_code: Option<ExitCode>,
     syscalls: Vec<SyscallRecord>,
     syscall_handler: &'a S,
@@ -171,7 +171,7 @@ impl<'a, 'b, S: Syscall> Executor<'a, 'b, S> {
         Self {
             pc,
             insn_cycles: 0,
-            pager: PagedMemory::new(image),
+            pager: SharedPagedMemory::new(image),
             exit_code: None,
             syscalls: Vec::new(),
             syscall_handler,
@@ -210,7 +210,7 @@ impl<'a, 'b, S: Syscall> Executor<'a, 'b, S> {
 
         let mut emu = Emulator::new();
         let mut segments = 0;
-        let initial_state = self.pager.image.get_system_state();
+        let initial_state = self.pager.read().image.get_system_state();
 
         loop {
             if self.exit_code.is_some() {
@@ -225,7 +225,7 @@ impl<'a, 'b, S: Syscall> Executor<'a, 'b, S> {
 
             emu.step(self)?;
 
-            let segment_cycles = self.insn_cycles + self.pager.cycles + self.pending.cycles;
+            let segment_cycles = self.insn_cycles + self.pager.cycles() + self.pending.cycles;
             if segment_cycles < segment_limit {
                 self.advance()?;
             } else if self.insn_cycles == 0 {
@@ -235,12 +235,12 @@ impl<'a, 'b, S: Syscall> Executor<'a, 'b, S> {
                 );
             } else {
                 self.pager.undo();
-                let used_cycles = self.insn_cycles + self.pager.cycles + RESERVED_CYCLES;
+                let used_cycles = self.insn_cycles + self.pager.cycles() + RESERVED_CYCLES;
                 let waste = (1 << segment_po2) - used_cycles;
                 tracing::debug!(
                     "split: {} + {} + {RESERVED_CYCLES} = {used_cycles}, waste: {waste}, pending: {:?}",
                     self.insn_cycles,
-                    self.pager.cycles,
+                    self.pager.cycles(),
                     self.pending
                 );
 
@@ -270,7 +270,7 @@ impl<'a, 'b, S: Syscall> Executor<'a, 'b, S> {
         }
 
         let (pre_state, partial_image, post_state) = self.pager.commit(self.pc);
-        let segment_cycles = self.insn_cycles + self.pager.cycles + RESERVED_CYCLES;
+        let segment_cycles = self.insn_cycles + self.pager.cycles() + RESERVED_CYCLES;
         let po2 = log2_ceil(segment_cycles.next_power_of_two());
         let exit_code = self.exit_code.unwrap();
 
@@ -301,7 +301,7 @@ impl<'a, 'b, S: Syscall> Executor<'a, 'b, S> {
         Ok(ExecutorResult {
             segments,
             exit_code,
-            post_image: self.pager.image.clone(),
+            post_image: self.pager.read().image.clone(),
             user_cycles: self.cycles.user.try_into()?,
             total_cycles: self.cycles.total.try_into()?,
             pre_state: initial_state,
@@ -750,7 +750,7 @@ impl<'a, 'b, S: Syscall> SyscallContext for Executor<'a, 'b, S> {
     }
 
     fn peek_page(&mut self, page_idx: u32) -> Result<Vec<u8>> {
-        let addr = self.pager.image.info.get_page_addr(page_idx);
+        let addr = self.pager.read().image.info.get_page_addr(page_idx);
         if !is_guest_memory(addr) {
             bail!("{page_idx} is an invalid guest page_idx");
         }
