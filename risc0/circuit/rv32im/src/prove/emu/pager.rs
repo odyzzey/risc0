@@ -284,6 +284,7 @@ impl PagedMemory {
     }
 }
 
+#[derive(Clone)]
 pub struct SharedPagedMemory {
     inner: Arc<RwLock<PagedMemory>>,
 }
@@ -293,6 +294,10 @@ impl SharedPagedMemory {
         Self {
             inner: Arc::new(RwLock::new(PagedMemory::new(image))),
         }
+    }
+
+    pub fn from_arc(inner: Arc<RwLock<PagedMemory>>) -> Self {
+        Self { inner }
     }
 
     pub fn read(&self) -> std::sync::RwLockReadGuard<'_, PagedMemory> {
