@@ -191,6 +191,10 @@ impl<'a, 'b, S: Syscall> Executor<'a, 'b, S> {
         }
     }
 
+    pub fn get_shared_memory(&self) -> &SharedPagedMemory {
+        &self.pager
+    }
+
     pub fn run<F: FnMut(Segment) -> Result<()>>(
         &mut self,
         segment_po2: usize,

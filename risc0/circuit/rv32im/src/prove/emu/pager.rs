@@ -300,6 +300,10 @@ impl SharedPagedMemory {
         Self { inner }
     }
 
+    pub fn share_with(&mut self, other: &Self) {
+        self.inner = Arc::clone(&other.inner);
+    }
+
     pub fn read(&self) -> std::sync::RwLockReadGuard<'_, PagedMemory> {
         self.inner.read().unwrap()
     }
