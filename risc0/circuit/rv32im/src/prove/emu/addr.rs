@@ -36,6 +36,18 @@ impl From<WordAddr> for ByteAddr {
     }
 }
 
+impl From<u32> for ByteAddr {
+    fn from(addr: u32) -> Self {
+        ByteAddr(addr)
+    }
+}
+
+impl From<u32> for WordAddr {
+    fn from(addr: u32) -> Self {
+        WordAddr(addr)
+    }
+}
+
 impl ByteAddr {
     pub const fn waddr(self) -> WordAddr {
         WordAddr(self.0 / WORD_SIZE as u32)

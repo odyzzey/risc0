@@ -42,7 +42,7 @@ use sha2::digest::generic_array::GenericArray;
 
 use super::{
     addr::{ByteAddr, WordAddr},
-    pager::{PagedMemory, SharedPagedMemory},
+    pager::SharedPagedMemory,
     rv32im::{DecodedInstruction, EmuContext, Emulator, Instruction, TrapCause},
     BIGINT_CYCLES, SYSTEM_START,
 };

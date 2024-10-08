@@ -12,9 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, io::Write, mem, rc::Rc, sync::Arc, time::Instant};
+use std::{cell::RefCell, io::Write, mem, rc::Rc, sync::Arc,/* sync::{Arc, RwLock}, */ time::Instant};
 
 use anyhow::{Context as _, Result};
+use parking_lot::RwLock;
 use risc0_binfmt::{MemoryImage, Program};
 use risc0_circuit_rv32im::prove::emu::{
     addr::ByteAddr,
@@ -45,7 +46,7 @@ use super::{
 pub struct ExecutorImpl<'a> {
     env: ExecutorEnv<'a>,
     image: MemoryImage,
-    shared_memory: Arc<SharedPagedMemory>,
+    shared_memory: Arc<RwLock<Option<SharedPagedMemory>>>,
     pub(crate) syscall_table: SyscallTable<'a>,
     profiler: Option<Rc<RefCell<Profiler>>>,
 }
@@ -99,7 +100,7 @@ impl<'a> ExecutorImpl<'a> {
         profiler: Option<Rc<RefCell<Profiler>>>,
     ) -> Result<Self> {
         let syscall_table = SyscallTable::from_env(&env);
-        let shared_memory = SharedPagedMemory::new(image);
+        let shared_memory= Arc::new(RwLock::new(None));
         Ok(Self {
             env,
             image,
@@ -109,7 +110,8 @@ impl<'a> ExecutorImpl<'a> {
         })
     }
 
-    pub fn shared_memory(&self) -> Arc<SharedPagedMemory> {
+    /// Access the shared memory of the executor.
+    pub fn shared_memory(&self) -> Arc<RwLock<Option<SharedPagedMemory>>> {
         self.shared_memory.clone()
     }
 
@@ -151,7 +153,10 @@ impl<'a> ExecutorImpl<'a> {
             self.env.trace.clone(),
         );
 
-        self.shared_memory.share_with(exec.get_shared_memory());
+        //self.shared_memory.share_with(exec.get_shared_memory());
+        // self.shared_memory = Arc::new(SharedPagedMemory::new_from(&exec.get_shared_memory()));
+
+        *self.shared_memory.write() = Some(SharedPagedMemory::new_from(&exec.get_shared_memory()));
 
         let start_time = Instant::now();
         let result = exec.run(segment_limit_po2, self.env.session_limit, |inner| {

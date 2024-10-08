@@ -15,10 +15,11 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     mem::take,
-    sync::{Arc, RwLock}
+    sync::Arc
 };
 
 use anyhow::Result;
+use parking_lot::RwLock;
 use risc0_binfmt::{MemoryImage, SystemState};
 use risc0_zkp::core::hash::sha::BLOCK_BYTES;
 use risc0_zkvm_platform::{PAGE_SIZE, WORD_SIZE};
@@ -296,20 +297,23 @@ impl SharedPagedMemory {
         }
     }
 
+    // create new shared pagememory synchronized with another shared pagememory
+    pub fn new_from(shared_memory: &Self) -> Self {
+        Self {
+            inner: shared_memory.inner.clone(),
+        }
+    }
+
     pub fn from_arc(inner: Arc<RwLock<PagedMemory>>) -> Self {
         Self { inner }
     }
 
-    pub fn share_with(&mut self, other: &Self) {
-        self.inner = Arc::clone(&other.inner);
+    pub fn read(&self) -> parking_lot::RwLockReadGuard<'_, PagedMemory> {
+        self.inner.read()
     }
 
-    pub fn read(&self) -> std::sync::RwLockReadGuard<'_, PagedMemory> {
-        self.inner.read().unwrap()
-    }
-
-    pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, PagedMemory> {
-        self.inner.write().unwrap()
+    pub fn write(&self) -> parking_lot::RwLockWriteGuard<'_, PagedMemory> {
+        self.inner.write()
     }
 
     pub fn cycles(&self) -> usize {
