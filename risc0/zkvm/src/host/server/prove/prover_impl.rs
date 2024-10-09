@@ -44,28 +44,30 @@ impl ProverImpl {
             segment_prover,
         }
     }
-}
 
-impl ProverServer for ProverImpl {
-    fn prove_session(&self, ctx: &VerifierContext, session: &Session) -> Result<ProveInfo> {
-        tracing::debug!(
-            "prove_session: exit_code = {:?}, journal = {:?}, segments: {}",
-            session.exit_code,
-            session.journal.as_ref().map(hex::encode),
-            session.segments.len()
-        );
-        let mut segments = Vec::new();
+    /// Prove all segments in the session and return their receipts.
+    pub fn prove_segments(
+        &self,
+        ctx: &VerifierContext,
+        session: &Session,
+    ) -> Result<Vec<SegmentReceipt>> {
+        let mut receipts = Vec::with_capacity(session.segments.len());
         for segment_ref in session.segments.iter() {
             let segment = segment_ref.resolve()?;
             for hook in &session.hooks {
                 hook.on_pre_prove_segment(&segment);
             }
-            segments.push(self.prove_segment(ctx, &segment)?);
+            let receipt = self.prove_segment(ctx, &segment)?;
             for hook in &session.hooks {
                 hook.on_post_prove_segment(&segment);
             }
+            receipts.push(receipt);
         }
+        Ok(receipts)
+    }
 
+    /// Prove the session after all segments have been proven.
+    pub fn prove_session_post_segment(&self, ctx: &VerifierContext, session: &Session, segments: &mut Vec<SegmentReceipt>) -> Result<ProveInfo> {
         let (assumptions, session_assumption_receipts) = session
             .assumptions
             .iter()
@@ -104,7 +106,9 @@ impl ProverServer for ProverImpl {
             .collect::<Result<_>>()?;
 
         let composite_receipt = CompositeReceipt {
-            segments,
+            // WARN: nasty clone here, will have to figure out
+            // a way to avoid this in the future.
+            segments: segments.clone(),
             assumption_receipts,
             verifier_parameters,
         };
@@ -162,6 +166,19 @@ impl ProverServer for ProverImpl {
             receipt,
             stats: session.stats(),
         })
+    }
+}
+
+impl ProverServer for ProverImpl {
+    fn prove_session(&self, ctx: &VerifierContext, session: &Session) -> Result<ProveInfo> {
+        tracing::debug!(
+            "prove_session: exit_code = {:?}, journal = {:?}, segments: {}",
+            session.exit_code,
+            session.journal.as_ref().map(hex::encode),
+            session.segments.len()
+        );
+        let mut segments = self.prove_segments(ctx, session)?;
+        Ok(self.prove_session_post_segment(ctx, session, &mut segments)?)
     }
 
     fn prove_segment(&self, ctx: &VerifierContext, segment: &Segment) -> Result<SegmentReceipt> {
