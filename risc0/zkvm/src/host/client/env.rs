@@ -59,10 +59,17 @@ pub(crate) struct AssumptionReceipts {
     pub(crate) accessed: Vec<(Assumption, AssumptionReceipt)>,
 }
 
+/// Represents a path where segments can be stored during execution.
+///
+/// This enum allows segments to be stored either in a temporary directory
+/// that will be automatically cleaned up, or in a persistent path specified
+/// by the user.
 #[allow(dead_code)]
 #[derive(Clone)]
 pub enum SegmentPath {
+    /// A temporary directory that will be automatically cleaned up when dropped.
     TempDir(Arc<TempDir>),
+    /// A persistent path specified by the user.
     Path(PathBuf),
 }
 
