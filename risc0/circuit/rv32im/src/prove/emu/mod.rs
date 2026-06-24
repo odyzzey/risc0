@@ -15,7 +15,7 @@
 pub mod addr;
 pub mod exec;
 pub mod mux;
-pub mod pager;
+mod pager;
 pub mod preflight;
 pub mod rv32im;
 pub mod testutil;

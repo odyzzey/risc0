@@ -22,7 +22,6 @@ use risc0_circuit_rv32im::prove::emu::{
         Executor, Syscall as NewSyscall, SyscallContext as NewSyscallContext,
         DEFAULT_SEGMENT_LIMIT_PO2,
     },
-    pager::SharedPagedMemory,
 };
 use risc0_core::scope;
 use risc0_zkp::core::digest::Digest;
@@ -45,7 +44,6 @@ use super::{
 pub struct ExecutorImpl<'a> {
     env: ExecutorEnv<'a>,
     image: MemoryImage,
-    shared_memory: Arc<SharedPagedMemory>,
     pub(crate) syscall_table: SyscallTable<'a>,
     profiler: Option<Rc<RefCell<Profiler>>>,
 }
@@ -99,18 +97,12 @@ impl<'a> ExecutorImpl<'a> {
         profiler: Option<Rc<RefCell<Profiler>>>,
     ) -> Result<Self> {
         let syscall_table = SyscallTable::from_env(&env);
-        let shared_memory = SharedPagedMemory::new(image);
         Ok(Self {
             env,
             image,
-            shared_memory,
             syscall_table,
             profiler,
         })
-    }
-
-    pub fn shared_memory(&self) -> Arc<SharedPagedMemory> {
-        self.shared_memory.clone()
     }
 
     /// This will run the executor to get a [Session] which contain the results
@@ -150,8 +142,6 @@ impl<'a> ExecutorImpl<'a> {
             self.env.input_digest,
             self.env.trace.clone(),
         );
-
-        self.shared_memory.share_with(exec.get_shared_memory());
 
         let start_time = Instant::now();
         let result = exec.run(segment_limit_po2, self.env.session_limit, |inner| {
