@@ -156,6 +156,9 @@ impl KernelBuild {
             .flag_if_supported("-fno-var-tracking")
             .flag_if_supported("-fno-var-tracking-assignments")
             .flag_if_supported("-g0")
+            .flag_if_supported("-fPIC")
+            // .flag_if_supported("-frtti")
+            // .flag_if_supported("-fexceptions")
             .compile(output);
     }
 
@@ -213,6 +216,7 @@ impl KernelBuild {
                 }
 
                 cmd.arg("--device-c");
+                cmd.arg("-Xcompiler").arg("-fPIC");
 
                 if enable_debug(output) {
                     cmd.arg("-G");

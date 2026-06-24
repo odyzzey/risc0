@@ -33,8 +33,8 @@ const SHA_INIT: usize = 5;
 const SHA_LOAD: usize = 16;
 const SHA_MAIN: usize = 52;
 
-const INVALID_IDX: u32 = u32::MAX;
-const NUM_PAGES: usize = 256 * 1024;
+pub const INVALID_IDX: u32 = u32::MAX;
+pub const NUM_PAGES: usize = 256 * 1024;
 
 const fn cycles_per_page(blocks_per_page: usize) -> usize {
     1 + SHA_INIT + (SHA_LOAD + SHA_MAIN) * blocks_per_page
@@ -230,6 +230,20 @@ impl PagedMemory {
         }
     }
 
+    pub fn peek_region(&self, addr: WordAddr, len: usize) -> Vec<u8> {
+        let page_idx = addr.page_idx();
+        let idx = self.page_table[page_idx as usize];
+        let mut buf= Vec::with_capacity(len);
+        if idx == INVALID_IDX {
+            let _ = self.image.load_region_in_page(addr.baddr().0, &mut buf);
+            buf
+        } else {
+            let page = &self.page_cache[idx as usize];
+            let addr = WordAddr(addr.0 % PAGE_WORDS as u32).baddr().0 as usize;
+            page.0[addr..addr + len].to_vec()
+        }
+    }
+
     fn load_page(&mut self, page_idx: u32) {
         tracing::trace!("load_page: 0x{page_idx:05x}");
         let page = self.image.load_page(page_idx);
@@ -280,6 +294,10 @@ impl PagedMemory {
             PageState::Dirty => Action::PageWrite(page_idx, page_cycles, old.is_some()),
         };
         self.pending_actions.push(action);
+    }
+
+    pub fn page_table(&self) -> &[u32] {
+        &self.page_table
     }
 }
 

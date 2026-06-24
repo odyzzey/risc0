@@ -196,6 +196,27 @@ pub fn send_recv_slice<T: Pod, U: Pod>(syscall_name: SyscallName, to_host: &[T])
     &bytemuck::cast_slice(from_host_buf)[..nbytes as usize / core::mem::size_of::<U>()]
 }
 
+/// Gets a slice of plain old data from the host.
+///
+/// This differs from `send_recv_slice` in that it avoids allocating and relies
+/// on the caller to provide a buffer to store the host's response.
+///
+/// Will panic if the buffer is too small for the host response.
+pub fn send_recv_slice_noalloc<T: Pod, U: Pod>(
+    syscall_name: SyscallName,
+    to_host: &[T],
+    from_host: &mut [u32],
+) {
+    let syscall::Return(nbytes, _) = syscall(syscall_name, bytemuck::cast_slice(to_host), &mut []);
+
+    // Calculate required words
+    let nwords = align_up(nbytes as usize, WORD_SIZE) / WORD_SIZE;
+    // assert!(nwords <= from_host.len(), "Buffer too small for host response ({} of {} bytes, {} words)", nbytes, from_host.len() * WORD_SIZE, nwords);
+
+    // Second call for the actual data
+    syscall(syscall_name, &[], &mut from_host[..nwords]);
+}
+
 /// Read private data from the STDIN of the zkVM and deserializes it.
 ///
 /// This function operates on every [`DeserializeOwned`] type, so you can

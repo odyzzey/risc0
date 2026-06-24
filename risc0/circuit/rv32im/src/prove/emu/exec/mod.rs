@@ -15,7 +15,7 @@
 #[cfg(test)]
 mod tests;
 
-use std::{array, cell::RefCell, collections::BTreeSet, mem, rc::Rc};
+use std::{array, cell::RefCell, collections::BTreeSet, mem, rc::Rc, sync::Mutex};
 
 use anyhow::{bail, ensure, Result};
 use crypto_bigint::{CheckedMul as _, Encoding as _, NonZero, U256, U512};
@@ -197,6 +197,20 @@ impl<'a, 'b, S: Syscall> Executor<'a, 'b, S> {
         max_cycles: Option<u64>,
         mut callback: F,
     ) -> Result<ExecutorResult> {
+        self.run_with_callbacks(segment_po2, max_cycles, callback, |_| ())
+    }
+
+    pub fn run_with_callbacks<F, G>(
+        &mut self,
+        segment_po2: usize,
+        max_cycles: Option<u64>,
+        mut callback: F,
+        mut view_callback: G,
+    ) -> Result<ExecutorResult>
+    where
+        F: FnMut(Segment) -> Result<()>,
+        G: FnMut(&PagedMemory),
+    {
         // at least one HaltCycle needs to appear in the body
         const MIN_HALT_CYCLES: usize = 1;
         // a final "is_done" PageFault cycle is required when a split occurs
@@ -228,6 +242,7 @@ impl<'a, 'b, S: Syscall> Executor<'a, 'b, S> {
             let segment_cycles = self.insn_cycles + self.pager.cycles + self.pending.cycles;
             if segment_cycles < segment_limit {
                 self.advance()?;
+                view_callback(&self.pager);
             } else if self.insn_cycles == 0 {
                 bail!(
                     "segment limit ({segment_limit}) too small for instruction at pc: {:?}",

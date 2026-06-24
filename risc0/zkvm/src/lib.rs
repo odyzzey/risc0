@@ -101,7 +101,7 @@ pub use {
         recursion::RECURSION_PO2,
         server::{
             exec::{compose::register_zkr, executor::ExecutorImpl},
-            prove::{get_prover_server, HalPair, ProverServer},
+            prove::{get_prover_server, HalPair, ProverServer, prover_impl::ProverImpl},
             session::{
                 FileSegmentRef, NullSegmentRef, Segment, SegmentRef, Session, SessionEvents,
                 SimpleSegmentRef,
@@ -120,7 +120,7 @@ pub use {
             client::Client as ApiClient, Asset, AssetRequest, Connector, SegmentInfo, SessionInfo,
         },
         client::{
-            env::{ExecutorEnv, ExecutorEnvBuilder},
+            env::{ExecutorEnv, ExecutorEnvBuilder, SegmentPath},
             prove::{
                 bonsai::BonsaiProver, default_executor, default_prover, external::ExternalProver,
                 Executor, Prover, ProverOpts, ReceiptKind,

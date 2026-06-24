@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-use std::{cell::RefCell, io::Write, mem, rc::Rc, sync::Arc, time::Instant};
+use std::{cell::RefCell, io::Write, mem, rc::Rc, sync::{Arc, Mutex}, time::Instant};
 
 use anyhow::{Context as _, Result};
 use risc0_binfmt::{MemoryImage, Program};
@@ -22,6 +22,7 @@ use risc0_circuit_rv32im::prove::emu::{
         Executor, Syscall as NewSyscall, SyscallContext as NewSyscallContext,
         DEFAULT_SEGMENT_LIMIT_PO2,
     },
+    pager::PagedMemory,
 };
 use risc0_core::scope;
 use risc0_zkp::core::digest::Digest;
@@ -118,9 +119,28 @@ impl<'a> ExecutorImpl<'a> {
 
     /// Run the executor until [crate::ExitCode::Halted] or
     /// [crate::ExitCode::Paused] is reached, producing a [Session] as a result.
-    pub fn run_with_callback<F>(&mut self, mut callback: F) -> Result<Session>
+    pub fn run_with_callback<F>(&mut self, callback: F) -> Result<Session>
     where
         F: FnMut(Segment) -> Result<Box<dyn SegmentRef>>,
+    {
+        self.run_with_callbacks(callback, |_| ())
+    }
+
+    /// Run the executor until [crate::ExitCode::Halted] or
+    /// [crate::ExitCode::Paused] is reached, producing a [Session] as a result.
+    pub fn run_with_view<G>(&mut self, view_callback: G) -> Result<Session>
+    where
+        G: FnMut(&PagedMemory),
+    {
+        self.run_with_callbacks(|segment| Ok(Box::new(FileSegmentRef::new(&segment, &SegmentPath::TempDir(Arc::new(tempdir()?)))?)), view_callback)
+    }
+
+    /// Run the executor until [crate::ExitCode::Halted] or
+    /// [crate::ExitCode::Paused] is reached, producing a [Session] as a result.
+    pub fn run_with_callbacks<F, G>(&mut self, mut callback: F, view_callback: G) -> Result<Session>
+    where
+        F: FnMut(Segment) -> Result<Box<dyn SegmentRef>>,
+        G: FnMut(&PagedMemory),
     {
         scope!("execute");
 
@@ -144,7 +164,7 @@ impl<'a> ExecutorImpl<'a> {
         );
 
         let start_time = Instant::now();
-        let result = exec.run(segment_limit_po2, self.env.session_limit, |inner| {
+        let result = exec.run_with_callbacks(segment_limit_po2, self.env.session_limit, |inner| {
             let output = inner
                 .exit_code
                 .expects_output()
@@ -181,7 +201,7 @@ impl<'a> ExecutorImpl<'a> {
             let segment_ref = callback(segment)?;
             refs.push(segment_ref);
             Ok(())
-        })?;
+        }, view_callback)?;
         let elapsed = start_time.elapsed();
 
         // Set the session_journal to the committed data iff the guest set a non-zero output.
